@@ -6,6 +6,8 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 import sys
+from datetime import datetime
+
 # pip install networkx==2.6.3 # because other versions of networkx cause issues
 
 # Assignment todos
@@ -15,28 +17,15 @@ import sys
 # Question 2: Communities
 # TODO
 # Question 3: HITS / PageRank
-# TODO
+# done
 # Question 4: Longitudinal analysis
-# TODO
+# done
 # Question 5: Visualisation
 # TODO adapt graph visualisation according to metrics
 # Question 6: Discussion and conclusions
 
-# Code todos:
-# 1. saving files for summer and christmas (problem: json not formatted properly)
-
 # provide file name manually in file
 file_name = 'office.json'
-
-def remove_zero_rows_and_cols(numpyarray):
-    numpyarray[~np.all(numpyarray == 0, axis=1)]
-    numpyarray[:, ~np.all(numpyarray == 0, axis=0)]
-    return numpyarray
-
-def print_counts(numpyarray):
-    unique, counts = np.unique(numpyarray, return_counts=True)
-    for un, cn in zip(unique, counts):
-        print("Value: {} Count: {}".format(un, cn))
 
 def read_data(file_name):
     print("reading in data...")
@@ -63,6 +52,7 @@ def read_data(file_name):
     print("reformatting dates took {:.2f}s".format(t2-t1))
 
     # 2. Make different dataframes for different periods of time
+    '''
     df_christmas = [] # Rest december, January, February
     df_summer = [] # July, August
 
@@ -80,21 +70,97 @@ def read_data(file_name):
     t3 = time.time()
 
     print("Created summer and christmas files in {:.2f}s".format(t3-t2))
+    '''
 
     df_full = df
 
-    return df_full, df_summer, df_christmas
+    return df_full
+    
 
 def build_graph(df, graph_name):
     print("building graph {}...".format(graph_name))
     unique_reviewers = df.reviewerID.unique().tolist()
     unique_products = df.asin.unique().tolist()
+    unique_product_idx = range(len(unique_products))
     reviewer_by_product = np.zeros([len(unique_reviewers), len(unique_products)])
-
+    product_idx_to_id = dict(zip(unique_product_idx, unique_products)) # converts number to identifiable ID from json file
+    product_id_to_idx = dict(zip(unique_products, unique_product_idx))
     for i, row in df.iterrows():
         current_item = row.loc['asin']
         current_reviewer = row.loc['reviewerID']
         reviewer_by_product[unique_reviewers.index(current_reviewer), unique_products.index(current_item)] = 1
+
+    # Find top n products (products with the most co-purchases)
+    product_by_reviewer = np.transpose(reviewer_by_product)
+    top_n = 3
+    max_vals = [0] * top_n
+    max_val_idx = [0] * top_n
+    for i, product in enumerate(product_by_reviewer):
+        product_importance = np.sum(product)
+        for j in range(top_n):
+            if product_importance > max_vals[j]:
+                max_vals[j] = product_importance
+                max_val_idx[j] = i
+                break
+
+    # find first date for which all products were reviewed
+    earliest_dates = [20000000000] * top_n
+    max_date = 0
+    for i, row in df.iterrows():
+        current_idx = product_id_to_idx[row.loc['asin']]
+        if current_idx in max_val_idx:
+            if int(row.loc['unixReviewTime']) > max_date:
+                max_date = int(row.loc['unixReviewTime'])
+            if int(row.loc['unixReviewTime']) < earliest_dates[max_val_idx.index(current_idx)]:
+                earliest_dates[max_val_idx.index(current_idx)] = int(row.loc['unixReviewTime'])
+
+    earliest_date_for_all = max(earliest_dates) 
+
+    df_top_products = []
+
+    time_frame = int(max_date) - int(earliest_date_for_all)
+    thirty_days_in_unix = 2592000
+    if time_frame % thirty_days_in_unix != 0:
+        max_date = max_date - (time_frame % thirty_days_in_unix)
+        time_frame = int(max_date) - int(earliest_date_for_all)
+
+    for i, row in df.iterrows():
+        current_item = product_id_to_idx[row.loc['asin']]
+        current_date = int(row.loc['unixReviewTime'])
+        if current_item in max_val_idx:
+            if earliest_date_for_all <= current_date <= max_date:
+                df_top_products.append(row)
+    df_top_products = pd.DataFrame(df_top_products)
+
+    # Only do analysis for first 12 months
+    number_of_months = 12
+    monthly_reviews_for_each_top_product = [[0] * number_of_months for i in range(top_n)]
+    current_date = int(earliest_date_for_all)
+    min_unix_per_month = [current_date + i*thirty_days_in_unix for i in range(number_of_months)]
+
+    for i, row in df_top_products.iterrows():
+        current_item = product_id_to_idx[row.loc['asin']]
+        idx_for_product = max_val_idx.index(current_item)
+        for j, element in enumerate(min_unix_per_month):
+            if int(row.loc['unixReviewTime']) < element:
+                monthly_reviews_for_each_top_product[idx_for_product][j-1] += 1
+                break
+
+    x_axis = [i+1 for i in range(12)]
+    plt.plot(x_axis, monthly_reviews_for_each_top_product[0], label = 'product 1')
+    plt.plot(x_axis, monthly_reviews_for_each_top_product[1], label = 'product 2')
+    plt.plot(x_axis, monthly_reviews_for_each_top_product[2], label = 'product 3')
+    plt.xlabel('Months')
+    plt.ylabel('Number of reviews')
+    plt.legend()
+    plt.title('Number of reviews for most-reviewed products between '\
+         + '\n' + datetime.utcfromtimestamp(earliest_date_for_all).strftime('%Y-%m-%d') + ' and ' + \
+         datetime.utcfromtimestamp(min_unix_per_month[-1]+thirty_days_in_unix).strftime('%Y-%m-%d')
+         )
+    current_directory = os.getcwd()
+    final_directory = os.path.join(current_directory, 'longitudinal_analysis')
+    plt.savefig(final_directory, dpi=600)
+    plt.close()
 
     co_purchase_matrix = np.zeros([len(unique_products), len(unique_products)])
     for row in reviewer_by_product:
@@ -117,19 +183,29 @@ def build_graph(df, graph_name):
 
     return G_co_purchase
 
-def draw_graph(graph, graph_name, color = 'm', display_graph = False):
+def draw_graph(graph, 
+               graph_name, 
+               degree_list,
+               betweenness_centrality,
+               eigenvector_centrality,
+               closeness_centrality,
+               clustering_coefficient,
+               connected_components,
+               authorities,
+               color = 'm',
+               display_graph = False):
+               
+    ##########################################
+    #### Draw full unadjusted graph ##########
+    ##########################################        
+    
     if graph_name:
         print("Drawing graph {}".format(graph_name))
     else:
         sys.exit("Please supply graph name for saving fig.")
 
     # change k for different distances between nodes
-    layout = nx.spring_layout(graph, k = 0.2)
-
-    # use for node sizes proportional to degree
-    # d = dict(G_co_purchase.degree)
-    # v for v in d.values may need to be adjusted (i.e. divide v?)
-    # nodelist=d.keys(), node_size=[v for v in d.values()]
+    layout = nx.spring_layout(graph, k = 0.15)
 
     nx.draw(graph, layout, node_size = 5, node_color = color)
 
@@ -138,7 +214,46 @@ def draw_graph(graph, graph_name, color = 'm', display_graph = False):
 
     if not display_graph:
         current_directory = os.getcwd()
-        final_directory = os.path.join(current_directory, graph_name)
+        final_directory = os.path.join(current_directory, graph_name + "_normal")
+        plt.savefig(final_directory, dpi=600)
+        plt.close()
+    else:
+        plt.show()
+
+    ############ Example visualisation #########
+    #############################################
+    #### Change node color based on authority ###
+    #############################################
+
+    largest_node_size = 25
+    max_value_auth = max(list(authorities.keys()))
+    scaling_factor = largest_node_size / max_value_auth
+
+    node_sizes = []
+    for val in authorities.keys():
+        size = val * scaling_factor
+        node_sizes.append(size)
+
+    node_colours = []
+    for val in node_sizes:
+        if val > 20:
+            node_colours.append('r')
+        elif val > 10:
+            node_colours.append('b')
+        elif val > 1:
+            node_colours.append('y')
+        else:
+            node_colours.append('lightgrey')
+            
+    # I ended up coloring the nodes differently because enlarging them doesn't work too well # 
+    nx.draw(graph, layout, node_size = 5, node_color = node_colours)
+
+    # Draw edge labels using layout
+    nx.draw_networkx_edges(graph, pos=layout)
+
+    if not display_graph:
+        current_directory = os.getcwd()
+        final_directory = os.path.join(current_directory, graph_name + "_authorities")
         plt.savefig(final_directory, dpi=600)
         plt.close()
     else:
@@ -149,54 +264,79 @@ def degree_centrality_histogram(graph, graph_name, bins = 20, display_hist = Fal
     plt.hist(deg_central, bins=bins)
     if not display_hist:
         current_directory = os.getcwd()
+        graph_name = graph_name + '_degree_centrality_histogram'
         final_directory = os.path.join(current_directory, graph_name)
         plt.savefig(final_directory, dpi=600)
         plt.close()
     else:
         plt.show()
 
+def hits_algorithm(graph):
+    h, a = nx.hits(graph)
+    # sort dicts
+    h = {k: v for k, v in sorted(h.items(), key=lambda item: item[1], reverse=True)}
+    #a = {k: v for k, v in sorted(a.items(), key=lambda item: item[1], reverse=True)}
+    h_first10 = {k: h[k] for k in list(h)[:10]}
+    #a_first10 = {k: a[k] for k in list(a)[:10]}
+    print("======= first 10 hubs =======", h_first10)
+    #print("======= authorities =======", a_first10)
+    # a is the same as h, but unsorted. we need it unsorted
+    return a
+
 def network_statistics(graph, graph_name):
     print("======= Graph statistics for graph {} =======".format(graph_name))
     print(graph)
-    degree_list = list(dict(graph.degree).values())
+    degrees = dict(graph.degree)
+    degree_list = list(degrees.values())
     print("Average degree centrality: ", sum(degree_list) / len(degree_list))
-    betweenness_centrality = list(dict(nx.betweenness_centrality(graph)).values())
-    print("Average betweenness centrality: ", sum(betweenness_centrality) / len(betweenness_centrality))
-    eigenvector_centrality = list(dict(nx.eigenvector_centrality(graph)).values())
-    print("Average eigenvector centrality: ", sum(eigenvector_centrality) / len(eigenvector_centrality))
-    closeness_centrality = list(dict(nx.closeness_centrality(graph)).values())
-    print("Average closeness_centrality: ", sum(closeness_centrality) / len(closeness_centrality))
-    clustering_coefficient = list(dict(nx.clustering(graph)).values())
-    print("Average clustering coefficient: ", sum(clustering_coefficient) / len(clustering_coefficient))
+    betweenness_centrality = dict(nx.betweenness_centrality(graph))
+    betweenness_centrality_list = list(betweenness_centrality.values())
+    print("Average betweenness centrality: ", sum(betweenness_centrality_list) / len(betweenness_centrality_list))
+    eigenvector_centrality = dict(nx.eigenvector_centrality(graph))
+    eigenvector_centrality_list = list(eigenvector_centrality.values())
+    print("Average eigenvector centrality: ", sum(eigenvector_centrality_list) / len(eigenvector_centrality_list))
+    closeness_centrality = dict(nx.closeness_centrality(graph))
+    closeness_centrality_list = list(closeness_centrality.values())
+    print("Average closeness_centrality: ", sum(closeness_centrality_list) / len(closeness_centrality_list))
+    clustering_coefficient = nx.clustering(graph)
+    clustering_coefficient_list = list(clustering_coefficient.values())
+    print("Average clustering coefficient: ", sum(clustering_coefficient_list) / len(clustering_coefficient_list))
     try:
         print("Graph diameter: ", nx.diameter(graph))
     except:
         print("Graph diameter: infinity") # because graph is not fully connected
-    print("Number of connected components: ", nx.number_connected_components(graph))
+    connected_components = nx.number_connected_components(graph)
+    print("Number of connected components: ", connected_components)
     connected_components_size = [len(c) for c in sorted(nx.connected_components(graph), key=len, reverse=True)]
     print("Sizes of connected comonents: ", connected_components_size)
+
+    return degrees, betweenness_centrality, \
+           eigenvector_centrality, closeness_centrality, \
+           clustering_coefficient, connected_components, connected_components_size
     
 def main(*args):
-    df_full, df_summer, df_christmas = read_data(file_name)
+    df_full = read_data(file_name)
     full_name = "Full"
-    summer_name = "Summer"
-    christmas_name = "Christmas"
     G_full = build_graph(df_full, full_name)
-    G_summer = build_graph(df_summer, summer_name)
-    G_christ = build_graph(df_christmas, christmas_name)
-    network_statistics(G_full, full_name)
-    network_statistics(G_summer, summer_name)
-    network_statistics(G_christ, christmas_name)
+    network_stats = network_statistics(G_full, full_name)
+    authorities = hits_algorithm(G_full)
 
-    # graphs and histogram are saved to current directory 
-    # if this is not desired, add
-    # ...display_graph = True for draw_graph
-    # ...display_hist = True for degree_centrality_histogram
+    degree_list, betweenness_centrality, \
+    eigenvector_centrality, closeness_centrality, \
+    clustering_coefficient, connected_components, connected_components_size = network_stats
+    
     degree_centrality_histogram(G_full, full_name)
-    degree_centrality_histogram(G_summer, summer_name)
-    degree_centrality_histogram(G_christ, christmas_name)
-    draw_graph(G_full, full_name, 'b')
-    draw_graph(G_summer, summer_name, 'g')
-    draw_graph(G_christ, christmas_name, 'm')
+    draw_graph(graph = G_full, 
+               graph_name = full_name,
+               degree_list = degree_list,
+               betweenness_centrality = betweenness_centrality,
+               eigenvector_centrality = eigenvector_centrality,
+               closeness_centrality = closeness_centrality,
+               clustering_coefficient = clustering_coefficient,
+               connected_components = connected_components,
+               authorities = authorities, 
+               color = 'b',
+               )
+
 if __name__ == "__main__":
     main(file_name)
