@@ -14,18 +14,25 @@ from datetime import datetime
 # TODO: 
 # Question 1: Network statistics - Metrics
 # should be done
+# TODO:
 # Question 2: Communities
+# cliques: done. Need to add some visualization.
+# homophily analysis: still need to choose the similarity metric. Need to add some visualization.
+# bridges: done. Neet to add some visualization.
+# Girwan-Newman:
 # TODO
 # Question 3: HITS / PageRank
 # done
+# TODO:
 # Question 4: Longitudinal analysis
 # done
+# TODO:
 # Question 5: Visualisation
 # TODO adapt graph visualisation according to metrics
 # Question 6: Discussion and conclusions
 
 # provide file name manually in file
-file_name = 'office.json'
+file_name = 'Musical_Instruments_5.json'
 
 def read_data(file_name):
     print("reading in data...")
@@ -44,7 +51,7 @@ def read_data(file_name):
 
     for i, row in df.iterrows():
         split_str = row[-1].split()
-        daystring = split_str[1].replace(',',"") if len(split_str[1]) == 3 else "0" + split_str[1].replace(',',"") # MMDYYYY - > MMDDYYYY
+        daystring = split_str[1].replace(',', "") if len(split_str[1]) == 3 else "0" + split_str[1].replace(',', "") # MMDYYYY - > MMDDYYYY
         new_format = split_str[0] + daystring + split_str[2]
         df.at[i, 'reviewTime'] = new_format
 
@@ -313,7 +320,107 @@ def network_statistics(graph, graph_name):
     return degrees, betweenness_centrality, \
            eigenvector_centrality, closeness_centrality, \
            clustering_coefficient, connected_components, connected_components_size
-    
+
+    ############ NetworkX 2.6.3 doesn't have the Girvan-Newman algorithm implemented #########
+    ############ This is the Girwan-Newman algorithm from NetworkX 2.8.8 #####################
+    ##########################################################################################
+
+def _without_most_central_edges(G, most_valuable_edge):
+    """Returns the connected components of the graph that results from
+    repeatedly removing the most "valuable" edge in the graph.
+
+    `G` must be a non-empty graph. This function modifies the graph `G`
+    in-place; that is, it removes edges on the graph `G`.
+
+    `most_valuable_edge` is a function that takes the graph `G` as input
+    (or a subgraph with one or more edges of `G` removed) and returns an
+    edge. That edge will be removed and this process will be repeated
+    until the number of connected components in the graph increases.
+
+    """
+    original_num_components = nx.number_connected_components(G)
+    num_new_components = original_num_components
+    while num_new_components <= original_num_components:
+        edge = most_valuable_edge(G)
+        G.remove_edge(*edge)
+        new_components = tuple(nx.connected_components(G))
+        num_new_components = len(new_components)
+    return new_components
+
+
+def girvan_newman(G, most_valuable_edge=None):
+    """Finds communities in a graph using the Girvan–Newman method.
+
+    Parameters
+    ----------
+    G : NetworkX graph
+
+    most_valuable_edge : function
+        Function that takes a graph as input and outputs an edge. The
+        edge returned by this function will be recomputed and removed at
+        each iteration of the algorithm.
+
+        If not specified, the edge with the highest
+        :func:`networkx.edge_betweenness_centrality` will be used.
+
+    Returns
+    -------
+    iterator
+        Iterator over tuples of sets of nodes in `G`. Each set of node
+        is a community, each tuple is a sequence of communities at a
+        particular level of the algorithm.
+
+    Notes
+    -----
+    The Girvan–Newman algorithm detects communities by progressively
+    removing edges from the original graph. The algorithm removes the
+    "most valuable" edge, traditionally the edge with the highest
+    betweenness centrality, at each step. As the graph breaks down into
+    pieces, the tightly-knit community structure is exposed and the
+    result can be depicted as a dendrogram.
+
+    """
+    # If the graph is already empty, simply return its connected
+    # components.
+    if G.number_of_edges() == 0:
+        yield tuple(nx.connected_components(G))
+        return
+    # If no function is provided for computing the most valuable edge,
+    # use the edge betweenness centrality.
+    if most_valuable_edge is None:
+
+        def most_valuable_edge(G):
+            """Returns the edge with the highest betweenness centrality
+            in the graph `G`.
+
+            """
+            # We have guaranteed that the graph is non-empty, so this
+            # dictionary will never be empty.
+            betweenness = nx.edge_betweenness_centrality(G)
+            return max(betweenness, key=betweenness.get)
+
+    # The copy of G here must include the edge weight data.
+    g = G.copy().to_undirected()
+    # Self-loops must be removed because their removal has no effect on
+    # the connected components of the graph.
+    g.remove_edges_from(nx.selfloop_edges(g))
+    while g.number_of_edges() > 0:
+        yield _without_most_central_edges(g, most_valuable_edge)
+
+
+def communities(graph, graph_name):
+    print("======= Communities for graph {} =======".format(graph_name))
+    print(graph)
+    cliques = nx.find_cliques(graph)
+    print("Cliques done")
+    bridges = nx.bridges(graph)
+    print("Bridges done")
+    GN_groups = girvan_newman(graph)
+    print("Girvan-Newman groups done")
+
+    return cliques, bridges, GN_groups
+
+
 def main(*args):
     df_full = read_data(file_name)
     full_name = "Full"
@@ -337,6 +444,33 @@ def main(*args):
                authorities = authorities, 
                color = 'b',
                )
+
+    # 2. COMMUNITIES
+    cliques, bridges, GN_groups = communities(G_full, full_name)
+
+    ### for now, results are global to help debugging
+
+    # transform the Generator object returned by the find_cliques() method into a dictionary
+    # with: keys = number of elements in a clique, values = lists of cliques
+    global cliques_dict
+    cliques_dict = {}
+    for clique in cliques:
+        if cliques_dict.get(len(clique)) is None:
+            cliques_dict[len(clique)] = [clique]
+        cliques_dict[len(clique)].append(clique)
+    cliques_dict = dict(sorted(cliques_dict.items()))
+
+    # transform the Generator object returned by the bridges() method into a list of tuples
+    global bridges_list
+    bridges_list = [bridge for bridge in bridges]
+
+    # transform the Generator object returned by the girvan_newman() function - BUT too slow and we need to think of this beter
+    global GN_groups_global
+    # for group in GN_groups:
+    #     print(group)
+    GN_groups_global = [group for group in GN_groups]
+
+
 
 if __name__ == "__main__":
     main(file_name)
