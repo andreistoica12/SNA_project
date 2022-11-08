@@ -19,7 +19,7 @@ import random
 # should be done
 # TODO:
 # Question 2: Communities
-# cliques: done. Need to add some visualization.
+# cliques: done. Visualization should be done.
 # homophily analysis: still need to choose the similarity metric. Need to add some visualization.
 # bridges: done. Neet to add some visualization.
 # Girwan-Newman: done. Visualization should be done.
@@ -484,6 +484,88 @@ def draw_GN_groups(graph,
         plt.show()
 
 
+# draw Maximum Clique(s) = the largest maximal clique(s)
+def draw_maximum_cliques(graph,
+                        graph_name,
+                        cliques,
+                        display_graph=False):
+    if graph_name:
+        print("Drawing the Maximum Clique(s) for graph {name}".format(name=graph_name))
+    else:
+        sys.exit("Please supply graph name for saving fig.")
+
+    options = {"edgecolors": "tab:gray", "node_size": 120, "alpha": 0.9}
+
+    # change k for different distances between nodes
+    layout = nx.spring_layout(graph, k=0.15)
+
+    # We store the cliques (lists of nodes) corresponding to the maximal number of nodes that can appear in a clique.
+    # We will sort the keys in the cliques dictionary, so the last key is the maximal size of a clique.
+    last_key = list(cliques.keys())[-1]
+    maximum_cliques = cliques[last_key]
+
+    # we create a list of randomly-generated colors.
+    colors = []
+    for _ in range(len(maximum_cliques)):
+        colors.append(["#" + ''.join([random.choice('ABCDEF0123456789') for i in range(6)])])
+
+    # we draw the nodes outside the cliques as smaller light grey points - they are less important for this visualization
+    nx.draw(graph, layout, node_size=5, node_color='lightgrey')
+
+    color_idx = 0
+    # each node in a group has the same color, but nodes in different groups have different colors
+    for maximum_clique in maximum_cliques:
+        nx.draw_networkx_nodes(graph, layout, nodelist=list(maximum_clique), node_color=colors[color_idx], **options)
+        color_idx += 1
+
+    ### PROBABLY WE NEED TO SCALE THE SIZE OF THE NODES AS WELL, BUT I'LL DO THAT LATER
+
+    # Draw edge labels using layout
+    nx.draw_networkx_edges(graph, pos=layout, width=0.2)
+
+    if not display_graph:
+        current_directory = os.getcwd()
+        final_directory = os.path.join(current_directory, graph_name + "_cliques")
+        plt.savefig(final_directory, dpi=600)
+        plt.close()
+    else:
+        plt.show()
+
+
+def draw_bridges(graph,
+                 graph_name,
+                 bridges,
+                 display_graph=False):
+    if graph_name:
+        print("Drawing bridges for graph {name}".format(name=graph_name))
+    else:
+        sys.exit("Please supply graph name for saving fig.")
+
+    # change k for different distances between nodes
+    layout = nx.spring_layout(graph, k=0.15)
+
+    nx.draw(graph, layout, node_size=10, node_color='m')
+
+    nx.draw_networkx_edges(
+        graph,
+        layout,
+        edgelist=bridges,
+        width=8,
+        alpha=0.5,
+        edge_color="tab:blue",
+    )
+
+    # if not display_graph:
+    #     current_directory = os.getcwd()
+    #     final_directory = os.path.join(current_directory, graph_name + "_bridges")
+    #     plt.savefig(final_directory, dpi=600)
+    #     plt.close()
+    # else:
+    #     plt.show()
+
+    plt.show()
+
+
 def main(*args):
     df_full = read_data(file_name)
     full_name = "Full"
@@ -494,9 +576,9 @@ def main(*args):
     degree_list, betweenness_centrality, \
     eigenvector_centrality, closeness_centrality, \
     clustering_coefficient, connected_components, connected_components_size = network_stats
-    
+
     degree_centrality_histogram(G_full, full_name)
-    draw_graph(graph = G_full, 
+    draw_graph(graph = G_full,
                graph_name = full_name,
                degree_list = degree_list,
                betweenness_centrality = betweenness_centrality,
@@ -504,13 +586,13 @@ def main(*args):
                closeness_centrality = closeness_centrality,
                clustering_coefficient = clustering_coefficient,
                connected_components = connected_components,
-               authorities = authorities, 
+               authorities = authorities,
                color = 'b',
                )
 
     # 2. COMMUNITIES
     # the number of iterations that the Girvan-Newman algorithm executes
-    GN_number_of_iterations = 5
+    GN_number_of_iterations = 3
 
     cliques, bridges, GN_output = communities(G_full, full_name, GN_number_of_iterations)
 
@@ -548,11 +630,19 @@ def main(*args):
 
     # As we described previously, we want to visualize the communities of the graph created at each iteration step.
     # This way, we are able to see the evolution of the algorithm, i.e. how it creates more connected components with each iteration
-    iteration = 5
+    iteration = 3
     draw_GN_groups(graph=GN_output_dict["GN_graphs_dict"][iteration],
                    graph_name=full_name,
                    iteration=iteration,
                    groups=GN_output_dict["GN_groups_dict"][iteration])
+
+    draw_maximum_cliques(graph=G_full,
+                         graph_name=full_name,
+                         cliques=cliques_dict)
+
+    draw_bridges(graph=G_full,
+                 graph_name=full_name,
+                 bridges=bridges_list)
 
 
 if __name__ == "__main__":
