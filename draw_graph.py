@@ -1,3 +1,4 @@
+import copy
 import os
 import json
 import pandas as pd
@@ -7,6 +8,8 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import sys
 from datetime import datetime
+import random
+
 
 # pip install networkx==2.6.3 # because other versions of networkx cause issues
 
@@ -19,7 +22,8 @@ from datetime import datetime
 # cliques: done. Need to add some visualization.
 # homophily analysis: still need to choose the similarity metric. Need to add some visualization.
 # bridges: done. Neet to add some visualization.
-# Girwan-Newman:
+# Girwan-Newman: done. Visualization should be done.
+# FOR ALL: INTERPRETATIONS!!!
 # TODO
 # Question 3: HITS / PageRank
 # done
@@ -83,6 +87,7 @@ def read_data(file_name):
 
     return df_full
     
+
 
 def build_graph(df, graph_name):
     print("building graph {}...".format(graph_name))
@@ -183,12 +188,14 @@ def build_graph(df, graph_name):
     G_co_purchase = nx.from_numpy_array(co_purchase_matrix)
     #print(G_co_purchase)
     #print("remove nodes with zero degree")
-    remove = [node for node,degree in dict(G_co_purchase.degree()).items() if degree < 1]
+    remove = [node for node, degree in dict(G_co_purchase.degree()).items() if degree < 1]
     G_co_purchase.remove_nodes_from(remove)
     #print("final graph")
     #print(G_co_purchase)
 
     return G_co_purchase
+
+
 
 def draw_graph(graph, 
                graph_name, 
@@ -212,9 +219,9 @@ def draw_graph(graph,
         sys.exit("Please supply graph name for saving fig.")
 
     # change k for different distances between nodes
-    layout = nx.spring_layout(graph, k = 0.15)
+    layout = nx.spring_layout(graph, k=0.15)
 
-    nx.draw(graph, layout, node_size = 5, node_color = color)
+    nx.draw(graph, layout, node_size=5, node_color=color)
 
     # Draw edge labels using layout
     nx.draw_networkx_edges(graph, pos=layout)
@@ -323,32 +330,10 @@ def network_statistics(graph, graph_name):
 
     ############ NetworkX 2.6.3 doesn't have the Girvan-Newman algorithm implemented #########
     ############ This is the Girwan-Newman algorithm from NetworkX 2.8.8 #####################
+    ############ slightly modified to fit our visualization purposes #########################
     ##########################################################################################
 
-def _without_most_central_edges(G, most_valuable_edge):
-    """Returns the connected components of the graph that results from
-    repeatedly removing the most "valuable" edge in the graph.
-
-    `G` must be a non-empty graph. This function modifies the graph `G`
-    in-place; that is, it removes edges on the graph `G`.
-
-    `most_valuable_edge` is a function that takes the graph `G` as input
-    (or a subgraph with one or more edges of `G` removed) and returns an
-    edge. That edge will be removed and this process will be repeated
-    until the number of connected components in the graph increases.
-
-    """
-    original_num_components = nx.number_connected_components(G)
-    num_new_components = original_num_components
-    while num_new_components <= original_num_components:
-        edge = most_valuable_edge(G)
-        G.remove_edge(*edge)
-        new_components = tuple(nx.connected_components(G))
-        num_new_components = len(new_components)
-    return new_components
-
-
-def girvan_newman(G, most_valuable_edge=None):
+def girvan_newman(G, number_of_iterations, most_valuable_edge=None):
     """Finds communities in a graph using the Girvan–Newman method.
 
     Parameters
@@ -404,21 +389,99 @@ def girvan_newman(G, most_valuable_edge=None):
     # Self-loops must be removed because their removal has no effect on
     # the connected components of the graph.
     g.remove_edges_from(nx.selfloop_edges(g))
-    while g.number_of_edges() > 0:
+
+    iteration_step = 1
+
+    # we force the algorithm to stop after 5 iterations, because we can only make sense
+    # of a few communities that we include in a visualization
+    while g.number_of_edges() > 0 and iteration_step <= number_of_iterations:
+        print("Girvan-Newman algorithm - computing iteration ", iteration_step, "...")
+        iteration_step += 1
         yield _without_most_central_edges(g, most_valuable_edge)
 
+def _without_most_central_edges(G, most_valuable_edge):
+    """Returns the connected components of the graph that results from
+    repeatedly removing the most "valuable" edge in the graph.
+    *** On top of that, after some changes, it now also returns
+    *** a copy of the updated graph, in order for us to visualize
+    *** the graph for each iteration
 
-def communities(graph, graph_name):
+    `G` must be a non-empty graph. This function modifies the graph `G`
+    in-place; that is, it removes edges on the graph `G`.
+
+    `most_valuable_edge` is a function that takes the graph `G` as input
+    (or a subgraph with one or more edges of `G` removed) and returns an
+    edge. That edge will be removed and this process will be repeated
+    until the number of connected components in the graph increases.
+
+    """
+    original_num_components = nx.number_connected_components(G)
+    num_new_components = original_num_components
+    while num_new_components <= original_num_components:
+        edge = most_valuable_edge(G)
+        G.remove_edge(*edge)
+        new_components = tuple(nx.connected_components(G))
+        num_new_components = len(new_components)
+
+    G_copy = copy.deepcopy(G)
+    output = {"new_components": new_components, "updated_graph": G_copy}
+
+    return output
+
+def communities(graph, graph_name, GN_number_of_iterations):
     print("======= Communities for graph {} =======".format(graph_name))
     print(graph)
+    print("Computing cliques...")
     cliques = nx.find_cliques(graph)
-    print("Cliques done")
+    print("Computing bridges...")
     bridges = nx.bridges(graph)
-    print("Bridges done")
-    GN_groups = girvan_newman(graph)
-    print("Girvan-Newman groups done")
+    print("Computing Girvan-Newman groups...")
+    GN_output = girvan_newman(graph, GN_number_of_iterations)
 
-    return cliques, bridges, GN_groups
+    return cliques, bridges, GN_output
+
+def draw_GN_groups(graph,
+               graph_name,
+               iteration,
+               groups,
+               display_graph=False):
+    ########################################################################
+    #### Draw GN groups corresponding to one iteration of the algorithm ####
+    ########################################################################
+
+    if graph_name:
+        print("Drawing Girvan-Newman communities for graph {name} at iteration {iteration}".format(name=graph_name, iteration=iteration))
+    else:
+        sys.exit("Please supply graph name for saving fig.")
+
+    options = {"edgecolors": "tab:gray", "node_size": 40, "alpha": 0.7}
+
+    # change k for different distances between nodes
+    layout = nx.spring_layout(graph, k=0.15)
+
+    # we create a list of randomly-generated colors.
+    colors = []
+    for _ in range(len(groups)):
+        colors.append(["#" + ''.join([random.choice('ABCDEF0123456789') for i in range(6)])])
+
+    color_idx = 0
+    # each node in a group has the same color, but nodes in different groups have different colors
+    for group in groups:
+        nx.draw_networkx_nodes(graph, layout, nodelist=list(group), node_color=colors[color_idx], **options)
+        color_idx += 1
+
+    ### PROBABLY WE NEED TO SCALE THE SIZE OF THE NODES AS WELL, BUT I'LL DO THAT LATER
+
+    # Draw edge labels using layout
+    nx.draw_networkx_edges(graph, pos=layout)
+
+    if not display_graph:
+        current_directory = os.getcwd()
+        final_directory = os.path.join(current_directory, graph_name + "_GN")
+        plt.savefig(final_directory, dpi=300)
+        plt.close()
+    else:
+        plt.show()
 
 
 def main(*args):
@@ -446,12 +509,16 @@ def main(*args):
                )
 
     # 2. COMMUNITIES
-    cliques, bridges, GN_groups = communities(G_full, full_name)
+    # the number of iterations that the Girvan-Newman algorithm executes
+    GN_number_of_iterations = 5
 
-    ### for now, results are global to help debugging
+    cliques, bridges, GN_output = communities(G_full, full_name, GN_number_of_iterations)
 
-    # transform the Generator object returned by the find_cliques() method into a dictionary
-    # with: keys = number of elements in a clique, values = lists of cliques
+    ### If you wish to see the raw data, run the file in the Python Console (the global variables will be visible)
+
+    # transform the Generator object returned by the find_cliques() method into a dictionary with:
+    # key = number of elements in a clique (the size of a clique)
+    # value = list of cliques (of size indicated by the key)
     global cliques_dict
     cliques_dict = {}
     for clique in cliques:
@@ -460,16 +527,32 @@ def main(*args):
         cliques_dict[len(clique)].append(clique)
     cliques_dict = dict(sorted(cliques_dict.items()))
 
-    # transform the Generator object returned by the bridges() method into a list of tuples
+    # transform the Generator object returned by the bridges() method into a list of tuples (a, b), where:
+    # a and b are the 2 endpoint nodes of a bridge
     global bridges_list
     bridges_list = [bridge for bridge in bridges]
 
-    # transform the Generator object returned by the girvan_newman() function - BUT too slow and we need to think of this beter
-    global GN_groups_global
-    # for group in GN_groups:
-    #     print(group)
-    GN_groups_global = [group for group in GN_groups]
+    # transform the Generator object returned by the girvan_newman() function into a dictionary, where:
+    # key = type of datastructure that we want to store, i.e. the groups/communities/components and the graphs themselves
+    # value = another dictionary, where:
+        # key = number of the iteration (because we want to store the groups and the graphs corresponding to each iteration.
+        #       This eases the visualization process afterwards)
+        # value = list of components/groups/communities
+    global GN_output_dict
+    GN_output_dict = {"GN_groups_dict": {}, "GN_graphs_dict": {}}
+    iteration_step = 1
+    for element in GN_output:
+        GN_output_dict["GN_groups_dict"][iteration_step] = element["new_components"]
+        GN_output_dict["GN_graphs_dict"][iteration_step] = element["updated_graph"]
+        iteration_step += 1
 
+    # As we described previously, we want to visualize the communities of the graph created at each iteration step.
+    # This way, we are able to see the evolution of the algorithm, i.e. how it creates more connected components with each iteration
+    iteration = 5
+    draw_GN_groups(graph=GN_output_dict["GN_graphs_dict"][iteration],
+                   graph_name=full_name,
+                   iteration=iteration,
+                   groups=GN_output_dict["GN_groups_dict"][iteration])
 
 
 if __name__ == "__main__":
