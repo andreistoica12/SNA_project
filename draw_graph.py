@@ -10,31 +10,7 @@ import sys
 from datetime import datetime
 import random
 
-
 # pip install networkx==2.6.3 # because other versions of networkx cause issues
-
-# Assignment todos
-# TODO: 
-# Question 1: Network statistics - Metrics
-# should be done
-# TODO:
-# Question 2: Communities
-# cliques: done. Visualization should be done.
-# homophily analysis: still need to choose the similarity metric. Need to add some visualization.
-# bridges: done. Neet to add some visualization.
-# Girwan-Newman: done. Visualization should be done.
-# FOR ALL: INTERPRETATIONS!!!
-# TODO
-# Question 3: HITS / PageRank
-# done
-# TODO:
-# Question 4: Longitudinal analysis
-# done
-# TODO:
-# Question 5: Visualisation
-# TODO adapt graph visualisation according to metrics
-# Question 6: Discussion and conclusions
-
 # provide file name manually in file
 file_name = 'Musical_Instruments_5.json'
 
@@ -54,7 +30,7 @@ def read_data(file_name):
     t1 = time.time()
 
     for i, row in df.iterrows():
-        split_str = row[-1].split()
+        split_str = row.loc['reviewTime'].split()
         daystring = split_str[1].replace(',', "") if len(split_str[1]) == 3 else "0" + split_str[1].replace(',', "") # MMDYYYY - > MMDDYYYY
         new_format = split_str[0] + daystring + split_str[2]
         df.at[i, 'reviewTime'] = new_format
@@ -62,32 +38,10 @@ def read_data(file_name):
     t2 = time.time()
     print("reformatting dates took {:.2f}s".format(t2-t1))
 
-    # 2. Make different dataframes for different periods of time
-    '''
-    df_christmas = [] # Rest december, January, February
-    df_summer = [] # July, August
-
-    for i, row in df.iterrows():
-        month_as_int = int(row[-1]) #last column is reviewtime
-        row = row.rename(None).fillna(0) #some reviewers are NaN
-        if (12251996 <= month_as_int <= 12312018) or (1011996 <= month_as_int <= 2282018): # whatever leap years
-            df_christmas.append(row)
-        if 6011996 <= month_as_int <= 8312018:
-            df_summer.append(row)
-
-    df_summer = pd.DataFrame(df_summer)
-    df_christmas = pd.DataFrame(df_christmas)
-
-    t3 = time.time()
-
-    print("Created summer and christmas files in {:.2f}s".format(t3-t2))
-    '''
-
     df_full = df
 
     return df_full
     
-
 
 def build_graph(df, graph_name):
     print("building graph {}...".format(graph_name))
@@ -173,6 +127,7 @@ def build_graph(df, graph_name):
     final_directory = os.path.join(current_directory, 'longitudinal_analysis')
     plt.savefig(final_directory, dpi=600)
     plt.close()
+    #plt.show()
 
     co_purchase_matrix = np.zeros([len(unique_products), len(unique_products)])
     for row in reviewer_by_product:
@@ -186,13 +141,8 @@ def build_graph(df, graph_name):
     co_purchase_matrix[co_purchase_matrix == 1] = 0
 
     G_co_purchase = nx.from_numpy_array(co_purchase_matrix)
-    #print(G_co_purchase)
-    #print("remove nodes with zero degree")
     remove = [node for node, degree in dict(G_co_purchase.degree()).items() if degree < 1]
     G_co_purchase.remove_nodes_from(remove)
-    #print("final graph")
-    #print(G_co_purchase)
-
     return G_co_purchase
 
 
@@ -350,16 +300,61 @@ def communities(graph, graph_name, GN_number_of_iterations):
 
 def hits_algorithm(graph):
     h, a = nx.hits(graph)
-    # sort dicts
     h = {k: v for k, v in sorted(h.items(), key=lambda item: item[1], reverse=True)}
-    #a = {k: v for k, v in sorted(a.items(), key=lambda item: item[1], reverse=True)}
     h_first10 = {k: h[k] for k in list(h)[:10]}
-    #a_first10 = {k: a[k] for k in list(a)[:10]}
     print("======= first 10 hubs =======", h_first10)
-    #print("======= authorities =======", a_first10)
-    # a is the same as h, but unsorted. We need it unsorted
     return a
 
+def node_sizes_for_plotting(graph, largest_node_size = 200):
+    """
+    Scales node sizes according to their degree
+
+    Returns
+    -------
+    list
+        node_sizes
+    """
+    max_value_degree = max(dict(graph.degree).values())
+    scaling_factor = largest_node_size / max_value_degree
+    
+    node_sizes = []
+    # node[0]: node, node[1]: degree
+    for node in graph.degree:
+        size = node[1] * scaling_factor
+        node_sizes.append(size)
+
+    return node_sizes
+
+def node_colors_for_plotting(attribute):
+    """
+    Takes an attribute and colors the nodes according
+    to where they fall on that attribute in terms of percentiles
+    colors plotted from cold = low to warm = high
+
+    Returns
+    -------
+    list
+        node_colors
+    """
+    color_palete = ['b', 'g', 'y', 'r']
+
+    low = np.percentile(attribute, 25)
+    middle = np.percentile(attribute, 50)
+    high = np.percentile(attribute, 75)
+
+    node_colors = []
+
+    for val in attribute:
+        if val < low:
+            node_colors.append(color_palete[0])
+        elif low <= val < middle:
+            node_colors.append(color_palete[1])
+        elif middle <= val < high:
+            node_colors.append(color_palete[2])
+        else:
+            node_colors.append(color_palete[3])
+
+    return node_colors
 
 def draw_graph(graph,
                graph_name,
@@ -381,64 +376,27 @@ def draw_graph(graph,
     else:
         sys.exit("Please supply graph name for saving fig.")
 
+    # Adjust node sizes based on degree
+    node_sizes = node_sizes_for_plotting(graph, largest_node_size=200)
+
     # change k for different distances between nodes
-    layout = nx.spring_layout(graph, k=0.15)
-
-    nx.draw(graph, layout, node_size=5, node_color=color)
-
+    layout = nx.spring_layout(graph, k=0.3)
+    nx.draw(graph, layout, node_size=node_sizes, node_color=color)
     # Draw edge labels using layout
     nx.draw_networkx_edges(graph, pos=layout)
-
     plt.show()
-
-    # if not display_graph:
-    #     current_directory = os.getcwd()
-    #     final_directory = os.path.join(current_directory, graph_name + "_normal")
-    #     plt.savefig(final_directory, dpi=600)
-    #     plt.close()
-    # else:
-    #     plt.show()
 
     ############ Example visualisation #########
     #############################################
     #### Change node color based on authority ###
     #############################################
 
-    largest_node_size = 25
-    max_value_auth = max(list(authorities.keys()))
-    scaling_factor = largest_node_size / max_value_auth
-
-    node_sizes = []
-    for val in authorities.keys():
-        size = val * scaling_factor
-        node_sizes.append(size)
-
-    node_colours = []
-    for val in node_sizes:
-        if val > 20:
-            node_colours.append('r')
-        elif val > 10:
-            node_colours.append('b')
-        elif val > 1:
-            node_colours.append('y')
-        else:
-            node_colours.append('lightgrey')
-
-    # I ended up coloring the nodes differently because enlarging them doesn't work too well #
-    nx.draw(graph, layout, node_size=5, node_color=node_colours)
-
+    auth_values = np.array(list(authorities.values()))
+    node_colors = node_colors_for_plotting(auth_values)
+    nx.draw(graph, layout, node_size=node_sizes, node_color=node_colors)
     # Draw edge labels using layout
     nx.draw_networkx_edges(graph, pos=layout)
-
     plt.show()
-
-    # if not display_graph:
-    #     current_directory = os.getcwd()
-    #     final_directory = os.path.join(current_directory, graph_name + "_authorities")
-    #     plt.savefig(final_directory, dpi=600)
-    #     plt.close()
-    # else:
-    #     plt.show()
 
 
 def degree_centrality_histogram(graph, graph_name, bins = 20, display_hist = False):
@@ -446,16 +404,6 @@ def degree_centrality_histogram(graph, graph_name, bins = 20, display_hist = Fal
     plt.hist(deg_central, bins=bins)
 
     plt.show()
-
-    # if not display_hist:
-    #     current_directory = os.getcwd()
-    #     graph_name = graph_name + '_degree_centrality_histogram'
-    #     final_directory = os.path.join(current_directory, graph_name)
-    #     plt.savefig(final_directory, dpi=600)
-    #     plt.close()
-    # else:
-    #     plt.show()
-
 
 # draw Maximum Clique(s) = the largest maximal clique(s)
 def draw_maximum_cliques(graph,
@@ -498,14 +446,6 @@ def draw_maximum_cliques(graph,
 
     plt.show()
 
-    # if not display_graph:
-    #     current_directory = os.getcwd()
-    #     final_directory = os.path.join(current_directory, graph_name + "_cliques")
-    #     plt.savefig(final_directory, dpi=600)
-    #     plt.close()
-    # else:
-    #     plt.show()
-
 
 def draw_bridges(graph,
                  graph_name,
@@ -531,14 +471,6 @@ def draw_bridges(graph,
     )
 
     plt.show()
-
-    # if not display_graph:
-    #     current_directory = os.getcwd()
-    #     final_directory = os.path.join(current_directory, graph_name + "_bridges")
-    #     plt.savefig(final_directory, dpi=600)
-    #     plt.close()
-    # else:
-    #     plt.show()
 
 
 def draw_GN_groups(graph,
@@ -578,21 +510,11 @@ def draw_GN_groups(graph,
 
     plt.show()
 
-    # if not display_graph:
-    #     current_directory = os.getcwd()
-    #     final_directory = os.path.join(current_directory, graph_name + "_GN")
-    #     plt.savefig(final_directory, dpi=300)
-    #     plt.close()
-    # else:
-    #     plt.show()
-
-
-
 def main(*args):
     df_full = read_data(file_name)
     full_name = "Full"
+    ##################### 4. LONGITUDINAL ANALYSIS & BUILD GRAPH #####################
     G_full = build_graph(df_full, full_name)
-
 
     ##################### 1. NETWORK STATISTICS - METRICS #####################
     network_stats = network_statistics(G_full, full_name)
@@ -649,10 +571,6 @@ def main(*args):
         GN_output_dict["GN_groups_dict"][iteration_step] = element["new_components"]
         GN_output_dict["GN_graphs_dict"][iteration_step] = element["updated_graph"]
         iteration_step += 1
-
-
-    ##################### 2. LONGITUDINAL ANALYSIS (as of now done in the build_graph() function - needs separate function #####################
-
 
     ##################### 5. VISUALIZATION #####################
 

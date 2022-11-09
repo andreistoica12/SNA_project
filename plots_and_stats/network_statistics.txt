@@ -1,0 +1,21 @@
+======= Graph statistics for graph Full =======
+Graph with 841 nodes and 4862 edges
+Average degree centrality:  11.562425683709868
+Average betweenness centrality:  0.0021660252325970387
+Average eigenvector centrality:  0.01917827536012568
+Average closeness_centrality:  0.3621150563721755
+Average clustering coefficient:  0.42237860952621054
+Graph diameter:  7
+Number of connected components:  1
+Sizes of connected comonents:  [841]
+======= first 10 hubs ======= 
+{94: 0.03116917797570678, 
+706: 0.029994523715722046, 
+156: 0.021916055407621687, 
+198: 0.020592376038845967, 
+707: 0.018045677195088716, 
+167: 0.017418574099178342, 
+285: 0.014866592024905957, 
+116: 0.014482466097435198, 
+258: 0.013753353144197358, 
+574: 0.013301775230326971}
