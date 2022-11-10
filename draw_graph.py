@@ -14,6 +14,7 @@ import random
 # provide file name manually in file
 file_name = 'Musical_Instruments_5.json'
 
+
 def read_data(file_name):
     print("reading in data...")
     data = []
@@ -31,17 +32,18 @@ def read_data(file_name):
 
     for i, row in df.iterrows():
         split_str = row.loc['reviewTime'].split()
-        daystring = split_str[1].replace(',', "") if len(split_str[1]) == 3 else "0" + split_str[1].replace(',', "") # MMDYYYY - > MMDDYYYY
+        daystring = split_str[1].replace(',', "") if len(split_str[1]) == 3 else "0" + split_str[1].replace(',',
+                                                                                                            "")  # MMDYYYY - > MMDDYYYY
         new_format = split_str[0] + daystring + split_str[2]
         df.at[i, 'reviewTime'] = new_format
 
     t2 = time.time()
-    print("reformatting dates took {:.2f}s".format(t2-t1))
+    print("reformatting dates took {:.2f}s".format(t2 - t1))
 
     df_full = df
 
     return df_full
-    
+
 
 def build_graph(df, graph_name):
     print("building graph {}...".format(graph_name))
@@ -49,7 +51,8 @@ def build_graph(df, graph_name):
     unique_products = df.asin.unique().tolist()
     unique_product_idx = range(len(unique_products))
     reviewer_by_product = np.zeros([len(unique_reviewers), len(unique_products)])
-    product_idx_to_id = dict(zip(unique_product_idx, unique_products)) # converts number to identifiable ID from json file
+    product_idx_to_id = dict(
+        zip(unique_product_idx, unique_products))  # converts number to identifiable ID from json file
     product_id_to_idx = dict(zip(unique_products, unique_product_idx))
     for i, row in df.iterrows():
         current_item = row.loc['asin']
@@ -80,7 +83,7 @@ def build_graph(df, graph_name):
             if int(row.loc['unixReviewTime']) < earliest_dates[max_val_idx.index(current_idx)]:
                 earliest_dates[max_val_idx.index(current_idx)] = int(row.loc['unixReviewTime'])
 
-    earliest_date_for_all = max(earliest_dates) 
+    earliest_date_for_all = max(earliest_dates)
 
     df_top_products = []
 
@@ -102,32 +105,32 @@ def build_graph(df, graph_name):
     number_of_months = 12
     monthly_reviews_for_each_top_product = [[0] * number_of_months for i in range(top_n)]
     current_date = int(earliest_date_for_all)
-    min_unix_per_month = [current_date + i*thirty_days_in_unix for i in range(number_of_months)]
+    min_unix_per_month = [current_date + i * thirty_days_in_unix for i in range(number_of_months)]
 
     for i, row in df_top_products.iterrows():
         current_item = product_id_to_idx[row.loc['asin']]
         idx_for_product = max_val_idx.index(current_item)
         for j, element in enumerate(min_unix_per_month):
             if int(row.loc['unixReviewTime']) < element:
-                monthly_reviews_for_each_top_product[idx_for_product][j-1] += 1
+                monthly_reviews_for_each_top_product[idx_for_product][j - 1] += 1
                 break
 
-    x_axis = [i+1 for i in range(12)]
-    plt.plot(x_axis, monthly_reviews_for_each_top_product[0], label = 'product 1')
-    plt.plot(x_axis, monthly_reviews_for_each_top_product[1], label = 'product 2')
-    plt.plot(x_axis, monthly_reviews_for_each_top_product[2], label = 'product 3')
+    x_axis = [i + 1 for i in range(12)]
+    plt.plot(x_axis, monthly_reviews_for_each_top_product[0], label='product 1')
+    plt.plot(x_axis, monthly_reviews_for_each_top_product[1], label='product 2')
+    plt.plot(x_axis, monthly_reviews_for_each_top_product[2], label='product 3')
     plt.xlabel('Months')
     plt.ylabel('Number of reviews')
     plt.legend()
-    plt.title('Number of reviews for most-reviewed products between '\
-         + '\n' + datetime.utcfromtimestamp(earliest_date_for_all).strftime('%Y-%m-%d') + ' and ' + \
-         datetime.utcfromtimestamp(min_unix_per_month[-1]+thirty_days_in_unix).strftime('%Y-%m-%d')
-         )
+    plt.title('Number of reviews for most-reviewed products between ' \
+              + '\n' + datetime.utcfromtimestamp(earliest_date_for_all).strftime('%Y-%m-%d') + ' and ' + \
+              datetime.utcfromtimestamp(min_unix_per_month[-1] + thirty_days_in_unix).strftime('%Y-%m-%d')
+              )
     current_directory = os.getcwd()
     final_directory = os.path.join(current_directory, 'longitudinal_analysis')
     plt.savefig(final_directory, dpi=600)
     plt.close()
-    #plt.show()
+    # plt.show()
 
     co_purchase_matrix = np.zeros([len(unique_products), len(unique_products)])
     for row in reviewer_by_product:
@@ -136,7 +139,7 @@ def build_graph(df, graph_name):
             for val_ in indices:
                 if val != val_:
                     co_purchase_matrix[val, val_] += 1
-                    
+
     # threshold singular links
     co_purchase_matrix[co_purchase_matrix == 1] = 0
 
@@ -149,40 +152,51 @@ def build_graph(df, graph_name):
 def network_statistics(graph, graph_name):
     print("======= Graph statistics for graph {} =======".format(graph_name))
     print(graph)
+
     degrees = dict(graph.degree)
     degree_list = list(degrees.values())
-    print("Average degree centrality: ", sum(degree_list) / len(degree_list))
-    betweenness_centrality = dict(nx.betweenness_centrality(graph))
-    betweenness_centrality_list = list(betweenness_centrality.values())
-    print("Average betweenness centrality: ", sum(betweenness_centrality_list) / len(betweenness_centrality_list))
+    print("Average degree centrality: ", sum(degree_list) / len(degree_list), ". Highest value: ", max(degree_list))
+
     eigenvector_centrality = dict(nx.eigenvector_centrality(graph))
     eigenvector_centrality_list = list(eigenvector_centrality.values())
-    print("Average eigenvector centrality: ", sum(eigenvector_centrality_list) / len(eigenvector_centrality_list))
+    print("Average eigenvector centrality: ", sum(eigenvector_centrality_list) / len(eigenvector_centrality_list), ". Highest value: ", max(eigenvector_centrality_list))
+
     closeness_centrality = dict(nx.closeness_centrality(graph))
     closeness_centrality_list = list(closeness_centrality.values())
-    print("Average closeness_centrality: ", sum(closeness_centrality_list) / len(closeness_centrality_list))
+    print("Average closeness_centrality: ", sum(closeness_centrality_list) / len(closeness_centrality_list), ". Highest value: ", max(closeness_centrality_list))
+
+    betweenness_centrality = dict(nx.betweenness_centrality(graph))
+    betweenness_centrality_list = list(betweenness_centrality.values())
+    print("Average betweenness centrality: ", sum(betweenness_centrality_list) / len(betweenness_centrality_list), ". Highest value: ", max(betweenness_centrality_list))
+
     clustering_coefficient = nx.clustering(graph)
     clustering_coefficient_list = list(clustering_coefficient.values())
     print("Average clustering coefficient: ", sum(clustering_coefficient_list) / len(clustering_coefficient_list))
+
     try:
         print("Graph diameter: ", nx.diameter(graph))
     except:
-        print("Graph diameter: infinity") # because graph is not fully connected
+        print("Graph diameter: infinity")  # because graph is not fully connected
+
+    density = nx.density(graph)
+    print("Graph density: ", density)
+
     connected_components = nx.number_connected_components(graph)
     print("Number of connected components: ", connected_components)
+
     connected_components_size = [len(c) for c in sorted(nx.connected_components(graph), key=len, reverse=True)]
     print("Sizes of connected comonents: ", connected_components_size)
 
-    return degrees, betweenness_centrality, \
-           eigenvector_centrality, closeness_centrality, \
+
+    return degrees, eigenvector_centrality, \
+           closeness_centrality, betweenness_centrality, \
            clustering_coefficient, connected_components, connected_components_size
 
-    ############ NetworkX 2.6.3 doesn't have the Girvan-Newman algorithm implemented #########
-    ############ This is the Girwan-Newman algorithm from NetworkX 2.8.8 #####################
-    ############ slightly modified to fit our visualization purposes #########################
-    ##########################################################################################
 
-
+############ NetworkX 2.6.3 doesn't have the Girvan-Newman algorithm implemented #########
+############ This is the Girwan-Newman algorithm from NetworkX 2.8.8 #####################
+############ slightly modified to fit our visualization purposes #########################
+##########################################################################################
 def girvan_newman(G, number_of_iterations, most_valuable_edge=None):
     """Finds communities in a graph using the Girvan–Newman method.
 
@@ -223,7 +237,6 @@ def girvan_newman(G, number_of_iterations, most_valuable_edge=None):
     # If no function is provided for computing the most valuable edge,
     # use the edge betweenness centrality.
     if most_valuable_edge is None:
-
         def most_valuable_edge(G):
             """Returns the edge with the highest betweenness centrality
             in the graph `G`.
@@ -305,7 +318,8 @@ def hits_algorithm(graph):
     print("======= first 10 hubs =======", h_first10)
     return a
 
-def node_sizes_for_plotting(graph, largest_node_size = 200):
+
+def node_sizes_for_plotting(graph, largest_node_size=200):
     """
     Scales node sizes according to their degree
 
@@ -316,7 +330,7 @@ def node_sizes_for_plotting(graph, largest_node_size = 200):
     """
     max_value_degree = max(dict(graph.degree).values())
     scaling_factor = largest_node_size / max_value_degree
-    
+
     node_sizes = []
     # node[0]: node, node[1]: degree
     for node in graph.degree:
@@ -324,6 +338,7 @@ def node_sizes_for_plotting(graph, largest_node_size = 200):
         node_sizes.append(size)
 
     return node_sizes
+
 
 def node_colors_for_plotting(attribute):
     """
@@ -336,7 +351,7 @@ def node_colors_for_plotting(attribute):
     list
         node_colors
     """
-    color_palete = ['b', 'g', 'y', 'r']
+    color_palette = ['b', 'g', 'y', 'r']
 
     low = np.percentile(attribute, 25)
     middle = np.percentile(attribute, 50)
@@ -346,15 +361,16 @@ def node_colors_for_plotting(attribute):
 
     for val in attribute:
         if val < low:
-            node_colors.append(color_palete[0])
+            node_colors.append(color_palette[0])
         elif low <= val < middle:
-            node_colors.append(color_palete[1])
+            node_colors.append(color_palette[1])
         elif middle <= val < high:
-            node_colors.append(color_palete[2])
+            node_colors.append(color_palette[2])
         else:
-            node_colors.append(color_palete[3])
+            node_colors.append(color_palette[3])
 
     return node_colors
+
 
 def draw_graph(graph,
                graph_name,
@@ -399,17 +415,18 @@ def draw_graph(graph,
     plt.show()
 
 
-def degree_centrality_histogram(graph, graph_name, bins = 20, display_hist = False):
-    deg_central= list(dict(graph.degree).values())
+def degree_centrality_histogram(graph, graph_name, bins=20, display_hist=False):
+    deg_central = list(dict(graph.degree).values())
     plt.hist(deg_central, bins=bins)
 
     plt.show()
 
+
 # draw Maximum Clique(s) = the largest maximal clique(s)
 def draw_maximum_cliques(graph,
-                        graph_name,
-                        cliques,
-                        display_graph=False):
+                         graph_name,
+                         cliques,
+                         display_graph=False):
     if graph_name:
         print("Drawing the Maximum Clique(s) for graph {name}".format(name=graph_name))
     else:
@@ -474,16 +491,17 @@ def draw_bridges(graph,
 
 
 def draw_GN_groups(graph,
-               graph_name,
-               iteration,
-               groups,
-               display_graph=False):
+                   graph_name,
+                   iteration,
+                   groups,
+                   display_graph=False):
     ########################################################################
     #### Draw GN groups corresponding to one iteration of the algorithm ####
     ########################################################################
 
     if graph_name:
-        print("Drawing Girvan-Newman communities for graph {name} at iteration {iteration}".format(name=graph_name, iteration=iteration))
+        print("Drawing Girvan-Newman communities for graph {name} at iteration {iteration}".format(name=graph_name,
+                                                                                                   iteration=iteration))
     else:
         sys.exit("Please supply graph name for saving fig.")
 
@@ -510,6 +528,7 @@ def draw_GN_groups(graph,
 
     plt.show()
 
+
 def main(*args):
     df_full = read_data(file_name)
     full_name = "Full"
@@ -519,14 +538,16 @@ def main(*args):
     ##################### 1. NETWORK STATISTICS - METRICS #####################
     network_stats = network_statistics(G_full, full_name)
 
-    degree_list, betweenness_centrality, \
-    eigenvector_centrality, closeness_centrality, \
-    clustering_coefficient, connected_components, connected_components_size = network_stats
+    global degree_dict, eigenvector_centrality, \
+    closeness_centrality, betweenness_centrality, \
+    clustering_coefficient, connected_components, connected_components_size
 
+    degree_dict, eigenvector_centrality, \
+    closeness_centrality, betweenness_centrality, \
+    clustering_coefficient, connected_components, connected_components_size = network_stats
 
     ##################### 3. HITS #####################
     authorities = hits_algorithm(G_full)
-
 
     ##################### 2. COMMUNITIES #####################
 
@@ -561,9 +582,9 @@ def main(*args):
     # transform the Generator object returned by the girvan_newman() function into a dictionary, where:
     # key = type of datastructure that we want to store, i.e. the groups/communities/components and the graphs themselves
     # value = another dictionary, where:
-        # key = number of the iteration (because we want to store the groups and the graphs corresponding to each iteration.
-        #       This eases the visualization process afterwards)
-        # value = list of components/groups/communities
+    # key = number of the iteration (because we want to store the groups and the graphs corresponding to each iteration.
+    #       This eases the visualization process afterwards)
+    # value = list of components/groups/communities
     global GN_output_dict
     GN_output_dict = {"GN_groups_dict": {}, "GN_graphs_dict": {}}
     iteration_step = 1
@@ -576,7 +597,7 @@ def main(*args):
 
     draw_graph(graph=G_full,
                graph_name=full_name,
-               degree_list=degree_list,
+               degree_list=degree_dict,
                betweenness_centrality=betweenness_centrality,
                eigenvector_centrality=eigenvector_centrality,
                closeness_centrality=closeness_centrality,
