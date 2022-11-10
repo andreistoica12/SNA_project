@@ -314,8 +314,11 @@ def communities(graph, graph_name, GN_number_of_iterations):
 def hits_algorithm(graph):
     h, a = nx.hits(graph)
     h = {k: v for k, v in sorted(h.items(), key=lambda item: item[1], reverse=True)}
+    a = {k: v for k, v in sorted(a.items(), key=lambda item: item[1], reverse=True)}
     h_first10 = {k: h[k] for k in list(h)[:10]}
+    a_first10 = {k: a[k] for k in list(a)[:10]}
     print("======= first 10 hubs =======", h_first10)
+    print("======= first 10 authorities =======", a_first10)
     return a
 
 
